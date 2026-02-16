@@ -26,7 +26,7 @@ def build_initialized_message() -> Dict[str, Any]:
 
 
 def build_thread_start_message() -> Dict[str, Any]:
-    return {"method": "thread/start", "id": 1, "params": {"model": config.DEFAULT_MODEL}}
+    return {"method": "thread/start", "id": 1, "params": {}}
 
 
 def build_turn_start_message(thread_id: str, instruction: str) -> Dict[str, Any]:
