@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from . import protocol
 from .process import start_codex_process
@@ -105,10 +106,108 @@ def _extract_agent_completed_text(msg: Dict[str, object]) -> Optional[str]:
     return None
 
 
+DEFAULT_COMMAND_STATUS = "Running command..."
+DELEGATING_STATUS = "Delegating task..."
+SEARCHING_STATUS = "Searching web..."
+OPENING_PAGE_STATUS = "Opening page..."
+FINDING_IN_PAGE_STATUS = "Finding in page..."
+
+
+def _status_for_command_execution(item: Dict[str, object]) -> str:
+    actions = item.get("commandActions")
+    if isinstance(actions, list) and actions:
+        first_action = actions[0]
+        if isinstance(first_action, dict):
+            action_command = first_action.get("command")
+            if isinstance(action_command, str) and action_command.strip():
+                return f"Ran {action_command}"
+    command = item.get("command")
+    if isinstance(command, str) and command.strip():
+        return f"Ran {command}"
+    return DEFAULT_COMMAND_STATUS
+
+
+def _status_for_item_started(item: Dict[str, object]) -> Optional[str]:
+    item_type = item.get("type")
+    if item_type == "commandExecution":
+        return _status_for_command_execution(item)
+    if item_type == "fileChange":
+        return _status_for_file_change(item)
+    if item_type == "webSearch":
+        return _status_for_web_search(item)
+    if item_type == "mcpToolCall":
+        return _status_for_mcp_tool_call(item)
+    if item_type == "collabToolCall":
+        return _status_for_collab_tool_call(item)
+    return None
+
+
+def _best_name(item: Dict[str, object], keys: list[str]) -> Optional[str]:
+    for key in keys:
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return Path(value).name
+    return None
+
+
+def _format_name_list(names: list[str], limit: int = 2) -> str:
+    if not names:
+        return ""
+    if len(names) <= limit:
+        return ", ".join(names)
+    remaining = len(names) - limit
+    return f"{', '.join(names[:limit])} +{remaining} more"
+
+
+def _status_for_file_change(item: Dict[str, object]) -> str:
+    changes = item.get("changes")
+    if not isinstance(changes, list) or not changes:
+        return "Editing files..."
+    names: list[str] = []
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        path_value = change.get("path")
+        if isinstance(path_value, str) and path_value.strip():
+            names.append(Path(path_value).name)
+    formatted_names = _format_name_list(names)
+    count = len(names) if names else len(changes)
+    if formatted_names:
+        return f"Editing {count} file(s): {formatted_names}"
+    return f"Editing {count} file(s)..."
+
+
+def _status_for_web_search(item: Dict[str, object]) -> str:
+    action = item.get("action")
+    if isinstance(action, dict):
+        action_type = action.get("type")
+        if action_type == "openPage":
+            return OPENING_PAGE_STATUS
+        if action_type == "findInPage":
+            return FINDING_IN_PAGE_STATUS
+    return SEARCHING_STATUS
+
+
+def _status_for_mcp_tool_call(item: Dict[str, object]) -> str:
+    server = item.get("server")
+    tool = item.get("tool")
+    if isinstance(server, str) and isinstance(tool, str) and server and tool:
+        return f"Calling tool: {server}/{tool}"
+    return "Calling tool..."
+
+
+def _status_for_collab_tool_call(item: Dict[str, object]) -> str:
+    tool = item.get("tool")
+    if isinstance(tool, str) and tool:
+        return f"Delegating: {tool}"
+    return DELEGATING_STATUS
+
+
 def run_codex_turn(
     instruction: str,
     thread_id: Optional[str] = None,
     cwd: Optional[str] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> Tuple[str, str, Path]:
     proc = start_codex_process()
     log_path, log_file = _open_log_file()
@@ -124,6 +223,33 @@ def run_codex_turn(
     final_text: Optional[str] = None
     turn_started = False
     current_thread_id = thread_id
+    last_status: Optional[str] = None
+    response_started = False
+    last_status_time = 0.0
+
+    def _set_status(new_status: Optional[str], min_interval: Optional[float] = None) -> None:
+        nonlocal last_status, last_status_time
+        if progress_callback is None or not new_status or new_status == last_status:
+            return
+        if min_interval is not None:
+            now = time.monotonic()
+            if now - last_status_time < min_interval:
+                return
+        try:
+            progress_callback(new_status)
+        except Exception:
+            return
+        last_status = new_status
+        last_status_time = time.monotonic()
+
+    def _update_status(
+        new_status: Optional[str],
+        min_interval: Optional[float] = None,
+        allow_after_response: bool = False,
+    ) -> None:
+        if response_started and not allow_after_response:
+            return
+        _set_status(new_status, min_interval)
 
     try:
         _send_message(proc, protocol.build_initialize_message())
@@ -172,13 +298,24 @@ def run_codex_turn(
                 raise RuntimeError(f"Turn start failed: {msg.get('error')}")
 
             if isinstance(msg, dict):
+                method = msg.get("method")
+                if method == "item/started":
+                    params = msg.get("params", {})
+                    item = params.get("item", {}) if isinstance(params, dict) else {}
+                    if isinstance(item, dict):
+                        _update_status(_status_for_item_started(item))
+
                 delta = _extract_agent_delta(msg)
                 if delta:
+                    if not response_started:
+                        response_started = True
                     reply_chunks.append(delta)
                     continue
 
                 completed_text = _extract_agent_completed_text(msg)
                 if completed_text:
+                    if not response_started:
+                        response_started = True
                     final_text = completed_text
                     continue
 

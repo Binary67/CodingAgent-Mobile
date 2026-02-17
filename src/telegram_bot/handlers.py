@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 
 from telegram import Update
 from telegram.constants import ChatAction
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from codex_client.session import run_codex_turn
@@ -108,6 +109,21 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 "/project use <name_or_index>.",
             )
             return
+        status_message = await update.message.reply_text("Starting...")
+        loop = asyncio.get_running_loop()
+
+        async def _update_status(text: str) -> None:
+            try:
+                await status_message.edit_text(text)
+            except BadRequest as exc:
+                if "Message is not modified" in str(exc):
+                    return
+            except Exception:
+                return
+
+        def progress_callback(text: str) -> None:
+            asyncio.run_coroutine_threadsafe(_update_status(text), loop)
+
         thread_id = project_store.get_thread_id(chat_id, current_project)
         try:
             response_text, new_thread_id, _log_path = await asyncio.to_thread(
@@ -115,8 +131,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 instruction,
                 thread_id,
                 current_project,
+                progress_callback,
             )
         except Exception as exc:
+            await _update_status(f"Error: {exc}")
             await update.message.reply_text(f"Error: {exc}")
             return
 

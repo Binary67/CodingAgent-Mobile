@@ -37,20 +37,18 @@ def split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> List[str]:
         return [text]
 
     chunks: list[str] = []
-    current: list[str] = []
-    current_len = 0
+    start = 0
+    text_len = len(text)
 
-    for line in text.splitlines(keepends=True):
-        if current_len + len(line) > limit and current:
-            chunks.append("".join(current))
-            current = [line]
-            current_len = len(line)
-            continue
-        current.append(line)
-        current_len += len(line)
+    while start < text_len:
+        end = min(start + limit, text_len)
+        if end < text_len:
+            newline_index = text.rfind("\n", start, end)
+            if newline_index > start:
+                end = newline_index + 1
+        chunks.append(text[start:end])
+        start = end
 
-    if current:
-        chunks.append("".join(current))
     return chunks
 
 
