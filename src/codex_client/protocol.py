@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from . import config
 
@@ -25,20 +25,36 @@ def build_initialized_message() -> Dict[str, Any]:
     return {"method": "initialized", "params": {}}
 
 
-def build_thread_start_message() -> Dict[str, Any]:
-    return {"method": "thread/start", "id": 1, "params": {}}
+def build_thread_start_message(cwd: Optional[str] = None) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    if cwd:
+        params["cwd"] = cwd
+    return {"method": "thread/start", "id": 1, "params": params}
 
 
-def build_thread_resume_message(thread_id: str) -> Dict[str, Any]:
-    return {"method": "thread/resume", "id": 1, "params": {"threadId": thread_id}}
+def build_thread_resume_message(
+    thread_id: str,
+    cwd: Optional[str] = None,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {"threadId": thread_id}
+    if cwd:
+        params["cwd"] = cwd
+    return {"method": "thread/resume", "id": 1, "params": params}
 
 
-def build_turn_start_message(thread_id: str, instruction: str) -> Dict[str, Any]:
+def build_turn_start_message(
+    thread_id: str,
+    instruction: str,
+    cwd: Optional[str] = None,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "threadId": thread_id,
+        "input": [{"type": "text", "text": instruction}],
+    }
+    if cwd:
+        params["cwd"] = cwd
     return {
         "method": "turn/start",
         "id": 2,
-        "params": {
-            "threadId": thread_id,
-            "input": [{"type": "text", "text": instruction}],
-        },
+        "params": params,
     }

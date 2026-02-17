@@ -1,0 +1,21 @@
+{
+  "chat_state": {
+    "951291756": {
+      "current_project": "/home/user/CodingAgent-Mobile",
+      "default_thread_id": null,
+      "threads_by_project": {
+        "/home/user/CodingAgent-Mobile": "019c6b61-b0d9-7c70-9257-3f34d8fcf333"
+      }
+    }
+  },
+  "projects": {
+    "/home/user/CodingAgent-Mobile": {
+      "name": "CodingAgent-Mobile",
+      "path": "/home/user/CodingAgent-Mobile"
+    }
+  },
+  "roots": [
+    "/home"
+  ],
+  "version": 1
+}

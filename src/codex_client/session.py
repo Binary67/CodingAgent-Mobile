@@ -108,6 +108,7 @@ def _extract_agent_completed_text(msg: Dict[str, object]) -> Optional[str]:
 def run_codex_turn(
     instruction: str,
     thread_id: Optional[str] = None,
+    cwd: Optional[str] = None,
 ) -> Tuple[str, str, Path]:
     proc = start_codex_process()
     log_path, log_file = _open_log_file()
@@ -128,9 +129,12 @@ def run_codex_turn(
         _send_message(proc, protocol.build_initialize_message())
         _send_message(proc, protocol.build_initialized_message())
         if current_thread_id:
-            _send_message(proc, protocol.build_thread_resume_message(current_thread_id))
+            _send_message(
+                proc,
+                protocol.build_thread_resume_message(current_thread_id, cwd=cwd),
+            )
         else:
-            _send_message(proc, protocol.build_thread_start_message())
+            _send_message(proc, protocol.build_thread_start_message(cwd=cwd))
 
         for line in proc.stdout:
             line = line.strip()
@@ -155,7 +159,11 @@ def run_codex_turn(
                 if current_thread_id and not turn_started:
                     _send_message(
                         proc,
-                        protocol.build_turn_start_message(current_thread_id, instruction),
+                        protocol.build_turn_start_message(
+                            current_thread_id,
+                            instruction,
+                            cwd=cwd,
+                        ),
                     )
                     turn_started = True
                 continue
