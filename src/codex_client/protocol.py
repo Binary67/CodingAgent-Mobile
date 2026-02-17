@@ -29,6 +29,10 @@ def build_thread_start_message() -> Dict[str, Any]:
     return {"method": "thread/start", "id": 1, "params": {}}
 
 
+def build_thread_resume_message(thread_id: str) -> Dict[str, Any]:
+    return {"method": "thread/resume", "id": 1, "params": {"threadId": thread_id}}
+
+
 def build_turn_start_message(thread_id: str, instruction: str) -> Dict[str, Any]:
     return {
         "method": "turn/start",
